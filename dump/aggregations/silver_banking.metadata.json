@@ -1,0 +1,1 @@
+{"options":{"viewOn":"customers","pipeline":[{"$match":{"accountType":"silver"}},{"$project":{"_id":0.0,"name":{"$concat":[{"$cond":[{"$eq":["$gender","female"]},"Miss","Mr."]}," ","$name.first"," ","$name.last"]},"phone":1.0,"email":1.0,"address":1.0,"account_ending":{"$substr":["$accountNumber",7.0,-1.0]}}}]},"indexes":[]}

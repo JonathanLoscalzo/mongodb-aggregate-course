@@ -1,0 +1,271 @@
+// Chapter 1: Basic Aggregation - $match and $project
+
+// Lab - $match
+/*Please connect to the class Atlas cluster through the mongo shell.The full command is:
+
+mongo "mongodb://cluster0-shard-00-00-jxeqq.mongodb.net:27017,cluster0-shard-00-01-jxeqq.mongodb.net:27017,cluster0-shard-00-02-jxeqq.mongodb.net:27017/aggregations?replicaSet=Cluster0-shard-0" --authenticationDatabase admin--ssl - u m121 - p aggregations--norc
+After connecting to the cluster, ensure you can see the movies collection by typing show collections and then run the command db.movies.findOne().Take a moment to familiarize yourself with the schema.
+
+Once you have familiarized yourself with the schema, continue to the next tab*/
+
+var c = {
+    "_id": ObjectId("573a1390f29313caabcd4cf1"),
+    "title": "Ingeborg Holm",
+    "year": 1913,
+    "runtime": 96,
+    "released": ISODate("1913-10-27T00:00:00Z"),
+    "cast": [
+        "Hilda Borgstr�m",
+        "Aron Lindgren",
+        "Erik Lindholm",
+        "Georg Gr�nroos"
+    ],
+    "poster": "http://ia.media-imdb.com/images/M/MV5BMTI5MjYzMTY3Ml5BMl5BanBnXkFtZTcwMzY1NDE2Mw@@._V1_SX300.jpg",
+    "plot": "Ingeborg Holm's husband opens up a grocery store and life is on the sunny side for them and their three children. But her husband becomes sick and dies. Ingeborg tries to keep the store, ...",
+    "fullplot": "Ingeborg Holm's husband opens up a grocery store and life is on the sunny side for them and their three children. But her husband becomes sick and dies. Ingeborg tries to keep the store, but because of the lazy, wasteful staff she eventually has to close it. With no money left, she has to move to the poor-house and she is separated from her children. Her children are taken care of by foster-parents, but Ingeborg simply has to get out of the poor-house to see them again...",
+    "lastupdated": "2015-08-25 00:11:47.743000000",
+    "type": "movie",
+    "directors": [
+        "Victor Sj�str�m"
+    ],
+    "writers": [
+        "Nils Krok (play)",
+        "Victor Sj�str�m"
+    ],
+    "imdb": {
+        "rating": 7,
+        "votes": 493,
+        "id": 3014
+    },
+    "countries": [
+        "Sweden"
+    ],
+    "genres": [
+        "Drama"
+    ]
+}
+
+// As a hint, your aggregation should return 23 documents. 
+// You can verify this by typing db.movies.aggregate(pipeline).itcount()
+// Load validateLab1.js into mongo shell
+load(pwd() + "\\validateLab1.js");
+/*        
+- imdb.rating is at least 7
+- genres does not contain "Crime" or "Horror"
+- rated is either "PG" or "G"
+- languages contains "English" and "Japanese"*/
+
+var pipeline = [
+    {
+        $match: {
+            "genres": { $nin: ["Crime", "Horror"] },
+            "imdb.rating": { $gte: 7 },
+            $or: [{ rated: { $eq: "PG" } }, { rated: { $eq: "G" } }],
+            languages: { $all: ["English", "Japanese"] },
+        },
+    }]
+
+//====================================
+// P2
+/*Problem:
+
+Our first movie night was a success. 
+Unfortunately, our ISP called to let us know we're close to our bandwidth quota, 
+but we need another movie recommendation!
+
+Using the same $match stage from the previous lab, 
+add a $project stage to only display the the title and film rating (title and rated fields).*/
+
+//    Assign the results to a variable called pipeline.
+var pipeline = [{
+    $match: {
+        "genres": { $nin: ["Crime", "Horror"] },
+        "imdb.rating": { $gte: 7 },
+        $or: [{ rated: { $eq: "PG" } }, { rated: { $eq: "G" } }],
+        languages: { $all: ["English", "Japanese"] },
+    },
+}, { $project: { _id: 0, title: 1, rated: "$imdb.rating" } }]
+//  Load validateLab2.js which was included in the same handout as validateLab1.js and execute validateLab2(pipeline)?
+load(pwd() + "\\validateLab2.js")
+//And run the validateLab2 validation method
+validateLab2(pipeline)
+
+
+//=====================================
+
+/*Problem:
+
+Our movies dataset has a lot of different documents, 
+some with more convoluted titles than others. 
+If we'd like to analyze our collection to find movie titles that are composed of only one word, 
+we could fetch all the movies in the dataset and do some processing in a client application, 
+but the Aggregation Framework allows us to do this on the server!
+
+Using the Aggregation Framework, find a count of the number of movies that have a title composed of one word. To clarify, "Cinderella" and "3-25" should count, where as "Cast Away" would not.
+
+Make sure you look into the $split String expression and the $size Array expression
+
+To get the count, you can append itcount() to the end of your pipeline
+
+db.movies.aggregate([...]).itcount()*/
+
+var pipeline = [
+    {
+        $project: {
+            titleWords: { $split: ["$title", " "] }
+        }
+    },
+    {
+        $match: {
+            titleWords: { $size: 1 }
+        }
+    }
+]
+
+// =========================================
+/*
+Optional Lab - Expressions with $project
+This lab will have you work with data within arrays, a common operation.
+
+Specifically, one of the arrays you'll work with is writers, from the movies collection.
+
+There are times when we want to make sure that the field is an array, and that it is not empty. We can do this within $match
+*/
+$match: { writers: { $elemMatch: { $exists: true } } }
+/*However, the entries within writers presents another problem. A good amount of entries in writers look something like the following, where the writer is attributed with their specific contribution
+*/
+{ "writers" : ["Vincenzo Cerami (story)", "Roberto Benigni (story)"] }
+/*But the writer also appears in the cast array as "Roberto Benigni"!
+ 
+Give it a look with the following query
+*/
+db.movies.findOne({ title: "Life Is Beautiful" }, { _id: 0, cast: 1, writers: 1 })
+/*This presents a problem, since comparing "Roberto Benigni" to "Roberto Benigni (story)" will definitely result in a difference.
+ 
+Thankfully there is a powerful expression to help us, $map. $map lets us iterate over an array, element by element, performing some transformation on each element. The result of that transformation will be returned in the same place as the original element.
+ 
+Within $map, the argument to input can be any expression as long as it resolves to an array. The argument to as is the name we want to use to refer to each element of the array when performing whatever logic we want, surrounding it with quotes and prepending two $ signs. The field as is optional, and if omitted each element must be referred to as "$$this"
+*/
+var algo = {
+    writers: {
+        $map: {
+            input: "$writers",
+            as: "writer",
+            in: "$$writer"
+        }
+    }
+}
+/*
+in is where the work is performed. Here, we use the $arrayElemAt expression, which takes two arguments, the array and the index of the element we want. We use the $split expression, splitting the values on " (".
+ 
+If the string did not contain the pattern specified, the only modification is it is wrapped in an array, so $arrayElemAt will always work
+*/
+var algo = {
+    writers: {
+        $map: {
+            input: "$writers",
+            as: "writer",
+            in: {
+                $arrayElemAt: [
+                    {
+                        $split: ["$$writer", " ("]
+                    },
+                    0
+                ]
+            }
+        }
+    }
+}
+/*
+Problem:
+
+Let's find how many movies in our movies collection are a "labor of love", 
+where the same person appears in cast, directors, and writers
+
+Note that you may have a dataset that has duplicate entries for some films. Don't worry if you count them few times, meaning you should not try to find those duplicates.
+
+To get a count after you have defined your pipeline, there are two simple methods.*/
+
+var pipeline = [
+    {
+        $match:
+            {
+                writers: { $elemMatch: { $exists: true } },
+                directors: { $elemMatch: { $exists: true } },
+                cast: { $elemMatch: { $exists: true } },
+            },
+    },
+    {
+        $project: {
+            writers: {
+                $map: {
+                    input: "$writers",
+                    as: "writer",
+                    in: {
+                        $arrayElemAt: [
+                            {
+                                $split: ["$$writer", " ("]
+                            },
+                            0
+                        ]
+                    }
+                }
+            },
+            directors: 1,
+            cast: 1
+        }
+    },
+    { $project: { common: { $size: { $setIntersection: ["$writers", "$directors", "$cast"] } }, _id: 0 } },
+    { $match: { common: { $gt: 0 } } },
+    { $count: "labors of love" }
+]
+
+/* RTA predefinida */
+
+db.movies.aggregate([
+    {
+        $match: {
+            cast: { $elemMatch: { $exists: true } },
+            directors: { $elemMatch: { $exists: true } },
+            writers: { $elemMatch: { $exists: true } }
+        }
+    },
+    {
+        $project: {
+            _id: 0,
+            cast: 1,
+            directors: 1,
+            writers: {
+                $map: {
+                    input: "$writers",
+                    as: "writer",
+                    in: {
+                        $arrayElemAt: [
+                            {
+                                $split: ["$$writer", " ("]
+                            },
+                            0
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    {
+        $project: {
+            labor_of_love: {
+                $gt: [
+                    { $size: { $setIntersection: ["$cast", "$directors", "$writers"] } },
+                    0
+                ]
+            }
+        }
+    },
+    {
+        $match: { labor_of_love: true }
+    },
+    {
+        $count: "labors of love"
+    }
+])
+
